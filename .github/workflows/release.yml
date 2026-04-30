@@ -1,4 +1,4 @@
-name: Build & Release Electron App
+name: Build & Auto Release Electron App
 
 on:
   push:
@@ -10,37 +10,52 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      # 📥 checkout code
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # 🟢 Node setup
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # 📦 install dependencies
-      - name: Install frontend deps
+      # 📦 install deps
+      - name: Install dependencies
         working-directory: frontend
         run: npm install
 
-      # ⚡ build React
+      # ⚡ build frontend
       - name: Build frontend
         working-directory: frontend
         run: npm run build
 
-      # 💿 Install electron builder
+      # 💿 install electron builder
       - name: Install electron builder
         working-directory: frontend
         run: npm install electron electron-builder --save-dev
 
-      # 🚀 Build Windows EXE
-      - name: Build EXE
+      # 🚀 build exe
+      - name: Build Windows EXE
         working-directory: frontend
         run: npx electron-builder --win --x64
 
-      # 📦 Upload artifact
-      - name: Upload release artifact
-        uses: actions/upload-artifact@v4
+      # 📦 get version from tag
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+
+      # 🚀 Create GitHub Release + Upload EXE
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: Flash-Boot-Tool-Windows
-          path: frontend/dist/*.exe
+          tag_name: ${{ env.VERSION }}
+          name: Flash Boot Tool ${{ env.VERSION }}
+          body: |
+            🔥 Auto Release Build
+            - Windows EXE
+            - Version: ${{ env.VERSION }}
+          files: |
+            frontend/dist/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
