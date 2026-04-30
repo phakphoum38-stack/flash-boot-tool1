@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import ProgressBar from "../components/ProgressBar";
+import SafeConfirm from "../components/SafeConfirm"; // ✅ FIX PATH
 
 export default function App() {
 
@@ -33,30 +34,6 @@ export default function App() {
   const pickISO = async () => {
     const file = await window.api.selectISO();
     setIso(file);
-  };
-
-  // 🛑 SAFE CONFIRM 2 STEP
-  const safeConfirm = async () => {
-
-    if (!iso || !device) {
-      alert("Select ISO + USB first");
-      return;
-    }
-
-    const ok1 = window.confirm(
-      `⚠️ WARNING\nThis will ERASE:\n${device}\n\nContinue?`
-    );
-
-    if (!ok1) return;
-
-    const ok2 = prompt("Type ERASE to confirm");
-
-    if (ok2 !== "ERASE") {
-      alert("Cancelled");
-      return;
-    }
-
-    startFlash();
   };
 
   // 🚀 FLASH STREAM
@@ -140,9 +117,15 @@ export default function App() {
 
       <br /><br />
 
-      {/* 🚀 ACTION */}
+      {/* 🚀 SAFE BUTTON (FIXED) */}
       <button
-        onClick={safeConfirm}
+        onClick={() =>
+          SafeConfirm({
+            device,
+            format,
+            onConfirm: startFlash
+          })
+        }
         style={{
           background: "red",
           color: "white",
