@@ -1,5 +1,5 @@
-const { app, BrowserWindow, dialog, ipcMain } = require("electron");
-const path = require("path");
+const { app, BrowserWindow } = require("electron");
+const { autoUpdater } = require("electron-updater");
 
 let win;
 
@@ -8,25 +8,37 @@ function createWindow() {
     width: 1200,
     height: 800,
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true
+      nodeIntegration: true,
+      contextIsolation: false
     }
   });
 
-  win.loadURL("http://localhost:5173");
+  win.loadURL("http://localhost:5173"); // Vite dev or build path
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
 
+  // 🚀 CHECK UPDATE ON START
+  autoUpdater.checkForUpdatesAndNotify();
+});
 
-// 📁 Native ISO picker (REAL PATH)
-ipcMain.handle("select-iso", async () => {
-  const result = await dialog.showOpenDialog(win, {
-    properties: ["openFile"],
-    filters: [
-      { name: "ISO/DMG", extensions: ["iso", "dmg"] }
-    ]
-  });
+// 📦 UPDATE AVAILABLE
+autoUpdater.on("update-available", () => {
+  win.webContents.send("update-status", "downloading");
+});
 
-  return result.filePaths[0];
+// 📥 DOWNLOAD PROGRESS
+autoUpdater.on("download-progress", (progress) => {
+  win.webContents.send("update-progress", progress);
+});
+
+// ✅ UPDATE DOWNLOADED
+autoUpdater.on("update-downloaded", () => {
+  win.webContents.send("update-status", "ready-to-install");
+
+  // 🔥 auto install + restart
+  setTimeout(() => {
+    autoUpdater.quitAndInstall();
+  }, 2000);
 });
