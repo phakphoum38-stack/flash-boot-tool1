@@ -1,0 +1,46 @@
+name: Build & Release Electron App
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 📦 install dependencies
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm install
+
+      # ⚡ build React
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      # 💿 Install electron builder
+      - name: Install electron builder
+        working-directory: frontend
+        run: npm install electron electron-builder --save-dev
+
+      # 🚀 Build Windows EXE
+      - name: Build EXE
+        working-directory: frontend
+        run: npx electron-builder --win --x64
+
+      # 📦 Upload artifact
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Flash-Boot-Tool-Windows
+          path: frontend/dist/*.exe
