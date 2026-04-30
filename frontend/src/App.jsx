@@ -1,19 +1,65 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ProgressBar from "../components/ProgressBar";
 
 export default function App() {
 
   const [iso, setIso] = useState("");
   const [device, setDevice] = useState("");
+  const [devices, setDevices] = useState([]);
+  const [format, setFormat] = useState("fat32");
   const [data, setData] = useState({ progress: 0 });
 
-  // 📁 Native file picker (REAL PATH)
+  // 💽 AUTO USB DETECT
+  useEffect(() => {
+
+    const loadDevices = async () => {
+      try {
+        const res = await fetch("http://127.0.0.1:8000/devices");
+        const json = await res.json();
+        setDevices(json);
+      } catch (e) {
+        console.error("device error", e);
+      }
+    };
+
+    loadDevices();
+    const interval = setInterval(loadDevices, 3000);
+
+    return () => clearInterval(interval);
+
+  }, []);
+
+  // 📁 Native ISO picker (Electron)
   const pickISO = async () => {
     const file = await window.api.selectISO();
     setIso(file);
   };
 
-  // 🚀 flash
+  // 🛑 SAFE CONFIRM 2 STEP
+  const safeConfirm = async () => {
+
+    if (!iso || !device) {
+      alert("Select ISO + USB first");
+      return;
+    }
+
+    const ok1 = window.confirm(
+      `⚠️ WARNING\nThis will ERASE:\n${device}\n\nContinue?`
+    );
+
+    if (!ok1) return;
+
+    const ok2 = prompt("Type ERASE to confirm");
+
+    if (ok2 !== "ERASE") {
+      alert("Cancelled");
+      return;
+    }
+
+    startFlash();
+  };
+
+  // 🚀 FLASH STREAM
   const startFlash = async () => {
 
     const res = await fetch("http://127.0.0.1:8000/flash", {
@@ -33,20 +79,26 @@ export default function App() {
       const lines = text.trim().split("\n");
 
       for (let line of lines) {
-        setData(JSON.parse(line));
+        if (!line) continue;
+
+        try {
+          setData(JSON.parse(line));
+        } catch (e) {
+          console.log("parse error", line);
+        }
       }
     }
   };
 
   return (
-    <div style={{ padding: 20 }}>
+    <div style={{ padding: 20, fontFamily: "sans-serif" }}>
 
-      <h1>🔥 Flash Boot Tool (PRO)</h1>
+      <h1>🔥 Flash Boot Tool PRO</h1>
 
-      {/* 📁 ISO Picker */}
+      {/* 📁 ISO PICKER */}
       <div
         style={{
-          border: "2px dashed #555",
+          border: "2px dashed #666",
           padding: 20,
           marginBottom: 10
         }}
@@ -58,26 +110,51 @@ export default function App() {
         onDragOver={(e) => e.preventDefault()}
       >
         <button onClick={pickISO}>
-          📁 Select ISO (Native)
+          📁 Select ISO (Native Electron)
         </button>
 
-        <p>{iso || "Drop ISO here"}</p>
+        <p>ISO: {iso || "Drop ISO here"}</p>
       </div>
 
-      {/* 💽 Device */}
-      <input
-        placeholder="/dev/sdb"
-        value={device}
-        onChange={(e) => setDevice(e.target.value)}
-      />
+      {/* 💽 USB DEVICE AUTO LIST */}
+      <h3>💽 USB Devices</h3>
+
+      <select value={device} onChange={(e) => setDevice(e.target.value)}>
+        <option value="">-- select USB --</option>
+
+        {devices.map((d, i) => (
+          <option key={i} value={d.path}>
+            {d.model || "USB"} | {d.path} | {d.size}
+          </option>
+        ))}
+      </select>
+
+      {/* 🧽 FORMAT OPTIONS */}
+      <h3>🧽 Format</h3>
+
+      <select value={format} onChange={(e) => setFormat(e.target.value)}>
+        <option value="fat32">FAT32</option>
+        <option value="exfat">exFAT</option>
+        <option value="ntfs">NTFS</option>
+      </select>
 
       <br /><br />
 
-      <button onClick={startFlash}>
-        🚀 Start Flash
+      {/* 🚀 ACTION */}
+      <button
+        onClick={safeConfirm}
+        style={{
+          background: "red",
+          color: "white",
+          padding: 10
+        }}
+      >
+        ⚠️ FORMAT + FLASH
       </button>
 
+      {/* 📊 PROGRESS */}
       <ProgressBar data={data} />
+
     </div>
   );
 }
