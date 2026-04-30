@@ -1,16 +1,25 @@
 import { useEffect, useState } from "react";
 import ProgressBar from "../components/ProgressBar";
-import SafeConfirm from "../components/SafeConfirm"; // ✅ FIX PATH
+import SafeConfirm from "../components/SafeConfirm";
 
 export default function App() {
 
+  // =========================
+  // 📦 STATE
+  // =========================
   const [iso, setIso] = useState("");
   const [device, setDevice] = useState("");
   const [devices, setDevices] = useState([]);
   const [format, setFormat] = useState("fat32");
   const [data, setData] = useState({ progress: 0 });
 
+  // 🔄 UPDATE STATE
+  const [updateStatus, setUpdateStatus] = useState("");
+  const [updateProgress, setUpdateProgress] = useState(0);
+
+  // =========================
   // 💽 AUTO USB DETECT
+  // =========================
   useEffect(() => {
 
     const loadDevices = async () => {
@@ -30,13 +39,39 @@ export default function App() {
 
   }, []);
 
-  // 📁 Native ISO picker (Electron)
+  // =========================
+  // 🔄 AUTO UPDATE LISTENER (ELECTRON)
+  // =========================
+  useEffect(() => {
+
+    const { ipcRenderer } = window.require("electron");
+
+    ipcRenderer.on("update-status", (e, msg) => {
+      setUpdateStatus(msg);
+    });
+
+    ipcRenderer.on("update-progress", (e, data) => {
+      setUpdateProgress(Math.round(data.percent || 0));
+    });
+
+    return () => {
+      ipcRenderer.removeAllListeners("update-status");
+      ipcRenderer.removeAllListeners("update-progress");
+    };
+
+  }, []);
+
+  // =========================
+  // 📁 ISO PICKER (ELECTRON)
+  // =========================
   const pickISO = async () => {
     const file = await window.api.selectISO();
     setIso(file);
   };
 
-  // 🚀 FLASH STREAM
+  // =========================
+  // 🚀 FLASH ENGINE
+  // =========================
   const startFlash = async () => {
 
     const res = await fetch("http://127.0.0.1:8000/flash", {
@@ -67,10 +102,39 @@ export default function App() {
     }
   };
 
+  // =========================
+  // 🖥 UI
+  // =========================
   return (
     <div style={{ padding: 20, fontFamily: "sans-serif" }}>
 
       <h1>🔥 Flash Boot Tool PRO</h1>
+
+      {/* 🔄 AUTO UPDATE UI */}
+      {updateStatus && (
+        <div style={{
+          position: "fixed",
+          top: 10,
+          right: 10,
+          background: "#111",
+          color: "white",
+          padding: 10,
+          borderRadius: 8,
+          width: 220
+        }}>
+          <h4>🔄 Updating App</h4>
+
+          <p>Status: {updateStatus}</p>
+
+          {updateStatus === "downloading" && (
+            <p>⬇ {updateProgress}%</p>
+          )}
+
+          {updateStatus === "ready-to-install" && (
+            <p>⚡ Installing...</p>
+          )}
+        </div>
+      )}
 
       {/* 📁 ISO PICKER */}
       <div
@@ -93,7 +157,7 @@ export default function App() {
         <p>ISO: {iso || "Drop ISO here"}</p>
       </div>
 
-      {/* 💽 USB DEVICE AUTO LIST */}
+      {/* 💽 USB DEVICE */}
       <h3>💽 USB Devices</h3>
 
       <select value={device} onChange={(e) => setDevice(e.target.value)}>
@@ -106,7 +170,7 @@ export default function App() {
         ))}
       </select>
 
-      {/* 🧽 FORMAT OPTIONS */}
+      {/* 🧽 FORMAT */}
       <h3>🧽 Format</h3>
 
       <select value={format} onChange={(e) => setFormat(e.target.value)}>
@@ -117,7 +181,7 @@ export default function App() {
 
       <br /><br />
 
-      {/* 🚀 SAFE BUTTON (FIXED) */}
+      {/* 🚀 SAFE FLASH BUTTON */}
       <button
         onClick={() =>
           SafeConfirm({
@@ -139,5 +203,7 @@ export default function App() {
       <ProgressBar data={data} />
 
     </div>
+  );
+}
   );
 }
