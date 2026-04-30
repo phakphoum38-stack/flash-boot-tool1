@@ -1,34 +1,25 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import ProgressBar from "../components/ProgressBar";
 
 export default function App() {
 
-  const [iso, setIso] = useState(null);
+  const [iso, setIso] = useState("");
   const [device, setDevice] = useState("");
-  const [devices, setDevices] = useState([]);
   const [data, setData] = useState({ progress: 0 });
 
-  // 💽 โหลด USB devices จาก backend
-  useEffect(() => {
-    fetch("http://127.0.0.1:8000/devices")
-      .then(res => res.json())
-      .then(setDevices);
-  }, []);
+  // 📁 Native file picker (REAL PATH)
+  const pickISO = async () => {
+    const file = await window.api.selectISO();
+    setIso(file);
+  };
 
-  // 🚀 start flash
+  // 🚀 flash
   const startFlash = async () => {
-    if (!iso || !device) {
-      alert("เลือก ISO และ USB ก่อน");
-      return;
-    }
 
     const res = await fetch("http://127.0.0.1:8000/flash", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        iso,
-        device
-      })
+      body: JSON.stringify({ iso, device })
     });
 
     const reader = res.body.getReader();
@@ -42,8 +33,7 @@ export default function App() {
       const lines = text.trim().split("\n");
 
       for (let line of lines) {
-        const json = JSON.parse(line);
-        setData(json);
+        setData(JSON.parse(line));
       }
     }
   };
@@ -51,38 +41,42 @@ export default function App() {
   return (
     <div style={{ padding: 20 }}>
 
-      <h1>🔥 Flash Boot Tool</h1>
+      <h1>🔥 Flash Boot Tool (PRO)</h1>
 
       {/* 📁 ISO Picker */}
-      <div>
-        <h3>เลือก ISO</h3>
-        <input
-          type="file"
-          accept=".iso,.dmg"
-          onChange={(e) => setIso(e.target.files[0]?.path || e.target.files[0]?.name)}
-        />
-        <p>{iso}</p>
+      <div
+        style={{
+          border: "2px dashed #555",
+          padding: 20,
+          marginBottom: 10
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          const file = e.dataTransfer.files[0];
+          setIso(file.path);
+        }}
+        onDragOver={(e) => e.preventDefault()}
+      >
+        <button onClick={pickISO}>
+          📁 Select ISO (Native)
+        </button>
+
+        <p>{iso || "Drop ISO here"}</p>
       </div>
 
-      {/* 💽 USB Device Picker */}
-      <div>
-        <h3>เลือก USB Device</h3>
-        <select onChange={(e) => setDevice(e.target.value)}>
-          <option value="">-- เลือก device --</option>
-          {devices.map((d, i) => (
-            <option key={i} value={d.path}>
-              {d.name} ({d.size})
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* 💽 Device */}
+      <input
+        placeholder="/dev/sdb"
+        value={device}
+        onChange={(e) => setDevice(e.target.value)}
+      />
 
-      {/* 🚀 Start */}
-      <button onClick={startFlash} style={{ marginTop: 20 }}>
+      <br /><br />
+
+      <button onClick={startFlash}>
         🚀 Start Flash
       </button>
 
-      {/* 📊 Progress */}
       <ProgressBar data={data} />
     </div>
   );
