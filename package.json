@@ -6,3 +6,16 @@
     "build": "vite build"
   }
 }
+
+"build": {
+  "appId": "com.flashboot.tool",
+  "productName": "Flash Boot Tool",
+  "publish": {
+    "provider": "github",
+    "owner": "phakphoum38-stack",
+    "repo": "Flash-Boot-Tool"
+  },
+  "win": {
+    "target": "nsis"
+  }
+}
