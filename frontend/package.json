@@ -1,22 +1,3 @@
 {
-  "name": "flash-boot-tool",
-  "version": "1.0.0",
-  "main": "electron/main.js",
-  "scripts": {
-    "dev": "vite",
-    "electron": "electron .",
-    "build": "vite build",
-    "dist": "electron-builder"
-  },
-  "devDependencies": {
-    "electron": "^28.0.0",
-    "electron-builder": "^24.0.0"
-  },
-  "build": {
-    "appId": "com.flashboot.tool",
-    "productName": "Flash Boot Tool",
-    "win": {
-      "target": "nsis"
-    }
-  }
+
 }
