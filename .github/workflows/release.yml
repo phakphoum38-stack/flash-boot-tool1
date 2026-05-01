@@ -21,13 +21,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: "npm"
 
-      # 📦 install deps
+      # 📦 install deps (clean install)
       - name: Install dependencies
         working-directory: frontend
-        run: npm install
+        run: npm ci
 
-      # 🔍 debug vite (กันพัง)
+      # 🔍 debug vite
       - name: Check vite
         working-directory: frontend
         run: npx vite --version
@@ -35,19 +36,19 @@ jobs:
       # ⚡ build frontend
       - name: Build frontend
         working-directory: frontend
-        run: npx vite build
+        run: npm run build
 
       # 🚀 build exe
       - name: Build Windows EXE
         working-directory: frontend
         run: npx electron-builder --win --x64
 
-      # 📌 ดึงชื่อ tag (เฉพาะตอนเป็น tag เท่านั้น)
-      - name: Get version
+      # 📌 ใช้ tag name ตรง ๆ
+      - name: Set version
         if: startsWith(github.ref, 'refs/tags/')
         run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
 
-      # 🚀 Create GitHub Release (ทำเฉพาะตอน tag)
+      # 🚀 Create GitHub Release (เฉพาะตอน tag เท่านั้น)
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -56,16 +57,11 @@ jobs:
           name: Flash Boot Tool ${{ env.VERSION }}
           body: |
             🔥 Auto Release Build
-            - Windows EXE
-            - Version: ${{ env.VERSION }}
+            Version: ${{ env.VERSION }}
+
+            ✔ Windows EXE included
+            ✔ Auto update supported
           files: |
             frontend/dist/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: frontend/dist/*.exe
-        env:
-         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
