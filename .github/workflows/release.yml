@@ -12,20 +12,22 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      # 📥 checkout code
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # 🟢 Node setup
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # 📦 install deps (รวม vite + electron)
+      # 📦 install deps
       - name: Install dependencies
         working-directory: frontend
         run: npm install
 
-      # 🔧 debug ว่ามี vite ไหม
+      # 🔍 debug vite (กันพัง)
       - name: Check vite
         working-directory: frontend
         run: npx vite --version
@@ -33,18 +35,21 @@ jobs:
       # ⚡ build frontend
       - name: Build frontend
         working-directory: frontend
-        run: npx vite build   # 👈 ใช้ npx แทน npm script กันพลาด
+        run: npx vite build
 
       # 🚀 build exe
       - name: Build Windows EXE
         working-directory: frontend
         run: npx electron-builder --win --x64
 
+      # 📌 ดึงชื่อ tag (เฉพาะตอนเป็น tag เท่านั้น)
       - name: Get version
-        id: version
+        if: startsWith(github.ref, 'refs/tags/')
         run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
 
+      # 🚀 Create GitHub Release (ทำเฉพาะตอน tag)
       - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.VERSION }}
@@ -54,9 +59,6 @@ jobs:
             - Windows EXE
             - Version: ${{ env.VERSION }}
           files: |
-            frontend/dist/*.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             frontend/dist/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
