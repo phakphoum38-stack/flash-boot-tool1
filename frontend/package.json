@@ -1,6 +1,6 @@
 {
   "name": "flash-boot-ui",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "private": true,
 
   "main": "electron/main.js",
@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "dist": "electron-builder",
     "electron": "electron ."
   },
 
@@ -26,20 +27,19 @@
   "build": {
     "appId": "com.flashboot.tool",
     "productName": "Flash Boot Tool",
+
     "directories": {
-      "output": "dist"
+      "output": "release"
     },
+
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "package.json"
     ],
+
     "win": {
       "target": "nsis"
-    },
-    "publish": {
-      "provider": "github",
-      "owner": "phakphoum38-stack",
-      "repo": "flash-boot-tool1"
     }
   }
 }
