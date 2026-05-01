@@ -13,46 +13,45 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # 📥 clone repo
+      # 📥 Checkout
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # 🟢 setup node
+      # 🟢 Setup Node (FIX: ไม่ใช้ cache เพื่อกัน error lock file)
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: "npm"
 
-      # 📦 install deps (FIX: ใช้ install แทน ci)
+      # 📦 Install dependencies (FIX: ใช้ install แทน ci)
       - name: Install dependencies
         working-directory: frontend
         run: npm install
 
-      # 🔍 debug
+      # 🔍 Debug vite
       - name: Check vite
         working-directory: frontend
         run: npx vite --version
 
-      # ⚡ build frontend
+      # ⚡ Build frontend
       - name: Build frontend
         working-directory: frontend
         run: npm run build
 
-      # 🚀 build exe
-      - name: Build EXE
+      # 🚀 Build EXE
+      - name: Build Windows EXE
         working-directory: frontend
         run: npx electron-builder --win --x64
 
-      # 🧪 เก็บไฟล์ไว้ดู (กันพัง)
-      - name: Upload Artifact
+      # 📦 Upload artifact (กัน build หาย)
+      - name: Upload EXE Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: exe-build
+          name: flash-boot-exe
           path: frontend/dist/*.exe
 
-      # 🚀 สร้าง release เฉพาะตอน tag
-      - name: Create Release
+      # 🚀 Create Release (เฉพาะตอน tag)
+      - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
