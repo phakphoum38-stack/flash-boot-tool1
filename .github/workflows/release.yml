@@ -1,9 +1,7 @@
-name: Build & Auto Release Electron App
+name: Build & Release EXE
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*.*.*"
   workflow_dispatch:
@@ -13,45 +11,35 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # 📥 Checkout
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # 🟢 Setup Node (FIX: ไม่ใช้ cache เพื่อกัน error lock file)
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # 📦 Install dependencies (FIX: ใช้ install แทน ci)
-      - name: Install dependencies
+      - name: Install deps
         working-directory: frontend
         run: npm install
 
-      # 🔍 Debug vite
-      - name: Check vite
-        working-directory: frontend
-        run: npx vite --version
-
-      # ⚡ Build frontend
       - name: Build frontend
         working-directory: frontend
         run: npm run build
 
-      # 🚀 Build EXE
-      - name: Build Windows EXE
+      - name: Debug dist
+        run: dir frontend/dist
+
+      - name: Build EXE
         working-directory: frontend
         run: npx electron-builder --win --x64
 
-      # 📦 Upload artifact (กัน build หาย)
-      - name: Upload EXE Artifact
+      - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: flash-boot-exe
+          name: exe
           path: frontend/dist/*.exe
 
-      # 🚀 Create Release (เฉพาะตอน tag)
-      - name: Create GitHub Release
+      - name: Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
