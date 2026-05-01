@@ -62,3 +62,10 @@ jobs:
             frontend/dist/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: frontend/dist/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
