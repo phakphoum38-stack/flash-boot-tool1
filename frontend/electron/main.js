@@ -1,22 +1,20 @@
 const { app, BrowserWindow } = require("electron");
-const { autoUpdater } = require("electron-updater");
-
-let win;
+const path = require("path");
 
 function createWindow() {
-  win = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
-    }
+  const win = new BrowserWindow({
+    width: 1000,
+    height: 700
   });
 
-  win.loadURL("http://localhost:5173"); // Vite dev or build path
+  const file = path.join(__dirname, "../dist/index.html");
+
+  console.log("LOAD FILE:", file);
+
+  win.loadFile(file);
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(createWindow);app.whenReady().then(() => {
   createWindow();
 
   // 🚀 CHECK UPDATE ON START
