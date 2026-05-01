@@ -2,6 +2,8 @@ name: Build & Auto Release Electron App
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*.*.*"
 
