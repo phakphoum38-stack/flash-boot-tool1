@@ -1,21 +1,57 @@
 {
   "name": "flash-boot-ui",
   "version": "1.0.0",
-  "scripts": {
-    "start": "vite",
-    "build": "vite build"
-  }
-}
+  "description": "USB Flash Boot Tool",
+  "author": "phakphum",
+  "main": "electron/main.js",
 
-"build": {
-  "appId": "com.flashboot.tool",
-  "productName": "Flash Boot Tool",
-  "publish": {
-    "provider": "github",
-    "owner": "phakphoum38-stack",
-    "repo": "Flash-Boot-Tool"
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "electron .",
+    "dist": "electron-builder --win --x64"
   },
-  "win": {
-    "target": "nsis"
+
+  "dependencies": {
+    "electron-updater": "^6.1.7"
+  },
+
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  },
+
+  "build": {
+    "appId": "com.flashboot.tool",
+    "productName": "Flash Boot Tool",
+
+    "directories": {
+      "output": "dist"
+    },
+
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "phakphoum38-stack",
+        "repo": "Flash-Boot-Tool"
+      }
+    ],
+
+    "win": {
+      "target": "nsis",
+      "icon": "electron/icon.ico"
+    },
+
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false
+    }
   }
 }
