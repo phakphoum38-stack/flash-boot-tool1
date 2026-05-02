@@ -1,10 +1,10 @@
 const { app, BrowserWindow } = require("electron");
 
-let autoUpdater;
+let autoUpdater = null;
 try {
   autoUpdater = require("electron-updater").autoUpdater;
 } catch (e) {
-  console.log("autoUpdater not available");
+  console.log("no updater");
 }
 
 let win;
@@ -25,17 +25,11 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
-  // 🛡 กัน crash
   if (autoUpdater) {
     try {
       autoUpdater.checkForUpdatesAndNotify();
-
-      autoUpdater.on("update-downloaded", () => {
-        autoUpdater.quitAndInstall();
-      });
-
     } catch (e) {
-      console.log("Updater error:", e);
+      console.log("updater error:", e);
     }
   }
 });
