@@ -1,11 +1,5 @@
 const { app, BrowserWindow } = require("electron");
-
-let autoUpdater = null;
-try {
-  autoUpdater = require("electron-updater").autoUpdater;
-} catch (e) {
-  console.log("no updater");
-}
+const path = require("path");
 
 let win;
 
@@ -19,17 +13,15 @@ function createWindow() {
     }
   });
 
-  win.loadFile("dist/index.html");
+  // ✅ FIX PATH (สำคัญ)
+  const indexPath = path.join(__dirname, "../dist/index.html");
+
+  console.log("LOAD:", indexPath);
+
+  win.loadFile(indexPath);
+
+  // ✅ เปิด debug ดู error
+  win.webContents.openDevTools();
 }
 
-app.whenReady().then(() => {
-  createWindow();
-
-  if (autoUpdater) {
-    try {
-      autoUpdater.checkForUpdatesAndNotify();
-    } catch (e) {
-      console.log("updater error:", e);
-    }
-  }
-});
+app.whenReady().then(createWindow);
