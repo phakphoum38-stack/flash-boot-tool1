@@ -1,20 +1,19 @@
-from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
-from backend.core.rufus_engine import flash_image_rufus
+from fastapi import APIRouter
+from backend.core.rufus_engine import write_image_rufus_style
+from backend.core.safety import verify_device
 
 router = APIRouter()
 
-
 @router.post("/flash")
-async def flash(req: Request):
+def flash(req: dict):
 
-    body = await req.json()
+    iso = req["iso"]
+    device = req["device"]
 
-    iso = body.get("iso")
-    device = body.get("device")
+    verify_device(device)
 
     def stream():
-        for update in flash_image_rufus(iso, device):
-            yield (str(update) + "\n")
+        for p in write_image_rufus_style(iso, device):
+            yield (json.dumps(p) + "\n")
 
-    return StreamingResponse(stream(), media_type="text/plain")
+    return stream()
