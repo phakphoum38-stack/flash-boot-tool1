@@ -1,17 +1,29 @@
 import subprocess
 
 def create_macos_usb(installer_path, usb_path):
-    try:
-        cmd = [
-            f"{installer_path}/Contents/Resources/createinstallmedia",
-            "--volume",
-            usb_path,
-            "--nointeraction"
-        ]
 
-        subprocess.run(cmd, check=True)
+    cmd = [
+        f"{installer_path}/Contents/Resources/createinstallmedia",
+        "--volume",
+        usb_path,
+        "--nointeraction"
+    ]
 
-        return {"status": "done"}
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True
+    )
 
-    except Exception as e:
-        return {"error": str(e)}
+    for line in process.stdout:
+        yield {
+            "log": line.strip()
+        }
+
+    process.wait()
+
+    if process.returncode != 0:
+        yield {"error": "createinstallmedia failed"}
+    else:
+        yield {"status": "done"}
