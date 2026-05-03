@@ -1,20 +1,20 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
-import json
-
-from backend.core.flash_engine import flash_image
-from backend.core.safety import validate_iso, validate_device
+from backend.core.rufus_engine import flash_image_rufus
 
 router = APIRouter()
 
+
 @router.post("/flash")
-def flash(data: dict):
+async def flash(req: Request):
 
-    validate_iso(data["iso"])
-    validate_device(data["device"])
+    body = await req.json()
 
-    def gen():
-        for step in flash_image(data["iso"], data["device"]):
-            yield json.dumps(step) + "\n"
+    iso = body.get("iso")
+    device = body.get("device")
 
-    return StreamingResponse(gen(), media_type="application/x-ndjson")
+    def stream():
+        for update in flash_image_rufus(iso, device):
+            yield (str(update) + "\n")
+
+    return StreamingResponse(stream(), media_type="text/plain")
