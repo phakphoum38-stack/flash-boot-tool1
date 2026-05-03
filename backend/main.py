@@ -13,7 +13,7 @@ import traceback
 import platform
 
 # =========================
-# 🧠 SAFE IMPORT (กัน Render พัง)
+# 🧠 SAFE IMPORT (macOS)
 # =========================
 try:
     from macos.detect_macos import is_macos
@@ -44,14 +44,18 @@ def root():
 
 
 # =========================
-# 🧠 OS DETECT
+# 🛡 VALIDATE DEVICE
 # =========================
-def get_os():
-    return platform.system()
+def validate_device(device):
+    if not device.startswith("\\\\.\\PHYSICALDRIVE"):
+        raise Exception("Invalid device path")
+
+    if ":" in device and not device.startswith("\\\\.\\"):
+        raise Exception("Refusing to flash drive letter")
 
 
 # =========================
-# 💽 USB DETECT (AUTO OS)
+# 💽 USB DETECT
 # =========================
 @app.get("/devices")
 def devices():
@@ -69,7 +73,7 @@ def devices():
 
             size_gb = int(d["Size"]) / (1024**3)
 
-            # 🔥 กัน HDD (ใหญ่เกิน = ไม่โชว์)
+            # 🔥 กัน HDD ใหญ่เกิน
             if size_gb > 512:
                 continue
 
@@ -84,18 +88,42 @@ def devices():
     except Exception as e:
         return {"error": str(e)}
 
+
+# =========================
+# 🧠 DETECT ISO TYPE
+# =========================
+def detect_iso_type(iso_path):
+    try:
+        with open(iso_path, "rb") as f:
+            data = f.read(1024 * 1024)
+
+        if b"Microsoft" in data:
+            return "windows"
+        if b"GRUB" in data or b"Linux" in data:
+            return "linux"
+        if b"Apple" in data:
+            return "macos"
+
+        return "unknown"
+
+    except:
+        return "unknown"
+
+
 # =========================
 # 🔍 DETECT BOOT MODE
 # =========================
 def detect_boot_mode(iso):
-    with open(iso, "rb") as f:
-        data = f.read(1024 * 1024)
-
-    return "UEFI" if b"EFI" in data else "BIOS"
+    try:
+        with open(iso, "rb") as f:
+            data = f.read(1024 * 1024)
+        return "UEFI" if b"EFI" in data else "BIOS"
+    except:
+        return "UNKNOWN"
 
 
 # =========================
-# 🔥 RAW FLASH (ใช้ได้ทุก OS)
+# 🔥 RAW FLASH
 # =========================
 def flash_iso(iso_path, device_path):
 
@@ -124,32 +152,100 @@ def flash_iso(iso_path, device_path):
 
             yield {
                 "progress": percent,
-                "speed": round(speed / 1024 / 1024, 2),  # MB/s
-                "eta": int(eta),  # seconds
-                "written": written,
-                "total": total
+                "speed": round(speed / 1024 / 1024, 2),
+                "eta": int(eta)
             }
 
-    yield {
-        "progress": 100,
-        "status": "done"
-    }
+    yield {"progress": 100, "status": "done"}
 
 
 # =========================
-# 🚀 SMART FLASH (ISO RAW)
+# 🚀 BASIC FLASH
 # =========================
 @app.post("/flash")
 def flash(data: FlashRequest):
 
     def gen():
         try:
+            validate_device(data.device)
+
             for p in flash_iso(data.iso, data.device):
                 yield json.dumps(p) + "\n"
+
         except Exception as e:
             yield json.dumps({"error": str(e)}) + "\n"
 
     return StreamingResponse(gen(), media_type="application/x-ndjson")
+
+
+# =========================
+# 🚀 SMART FLASH (AUTO)
+# =========================
+@app.post("/smart-flash")
+def smart_flash(data: FlashRequest):
+
+    def gen():
+        try:
+            validate_device(data.device)
+
+            iso_type = detect_iso_type(data.iso)
+            boot_mode = detect_boot_mode(data.iso)
+
+            yield json.dumps({
+                "step": "detect",
+                "iso_type": iso_type,
+                "boot": boot_mode
+            }) + "\n"
+
+            yield json.dumps({"mode": "raw"}) + "\n"
+
+            for p in flash_iso(data.iso, data.device):
+                yield json.dumps(p) + "\n"
+
+            yield json.dumps({"status": "done"}) + "\n"
+
+        except Exception as e:
+            yield json.dumps({"error": str(e)}) + "\n"
+
+    return StreamingResponse(gen(), media_type="application/x-ndjson")
+
+
+# =========================
+# 🔐 VERIFY
+# =========================
+@app.post("/verify")
+def verify(data: dict):
+    try:
+        def sha256(path):
+            h = hashlib.sha256()
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(4 * 1024 * 1024), b""):
+                    h.update(chunk)
+            return h.hexdigest()
+
+        return {
+            "match": sha256(data["iso"]) == sha256(data["device"])
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# =========================
+# 🔍 BOOT CHECK
+# =========================
+@app.post("/boot-check")
+def boot_check(data: dict):
+    try:
+        with open(data["iso"], "rb") as f:
+            d = f.read(4096)
+
+        return {
+            "bootable": b"EFI" in d or b"BOOT" in d
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # =========================
@@ -172,27 +268,6 @@ def macos_flash(data: dict):
             yield json.dumps({"error": str(e)}) + "\n"
 
     return StreamingResponse(gen(), media_type="application/x-ndjson")
-
-
-# =========================
-# 🔐 VERIFY SHA256
-# =========================
-@app.post("/verify")
-def verify(data: dict):
-    try:
-        def sha256(path):
-            h = hashlib.sha256()
-            with open(path, "rb") as f:
-                for chunk in iter(lambda: f.read(4 * 1024 * 1024), b""):
-                    h.update(chunk)
-            return h.hexdigest()
-
-        return {
-            "match": sha256(data["iso"]) == sha256(data["device"])
-        }
-
-    except Exception as e:
-        return {"error": str(e)}
 
 
 # =========================
