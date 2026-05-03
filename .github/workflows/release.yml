@@ -1,53 +1,75 @@
-name: Build & Release EXE
+name: Build & Release Flash Boot Tool
 
 on:
   push:
     tags:
-      - "v*.*.*"
-  workflow_dispatch:
+      - "v*"
 
 jobs:
-  build:
+  build-backend:
     runs-on: windows-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend deps
+        run: |
+          pip install -r requirements.txt
+
+      - name: Build backend exe
+        run: |
+          python scripts/build_backend.py
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend
+          path: dist/backend.exe
+
+  build-electron:
+    needs: build-backend
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download backend
+        uses: actions/download-artifact@v4
+        with:
+          name: backend
+          path: backend/dist
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install deps
-        working-directory: frontend
-        run: npm install
+      - name: Install frontend deps
+        run: |
+          cd frontend
+          npm install
 
       - name: Build frontend
-        working-directory: frontend
-        run: npm run build
+        run: |
+          cd frontend
+          npm run build
 
-      # 🔍 DEBUG (สำคัญมาก)
-      - name: Check dist
-        run: dir frontend/dist
+      - name: Build Electron installer
+        run: |
+          cd frontend
+          npm run dist
 
-      - name: Check electron
-        run: dir frontend/electron
-
-      - name: Build EXE
-        working-directory: frontend
-        run: npx electron-builder --win --x64
-
-      - name: Upload EXE
-        uses: actions/upload-artifact@v4
-        with:
-          name: flash-boot-exe
-          path: frontend/release/*.exe
-
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files: frontend/release/*.exe
+          files: |
+            frontend/release/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
