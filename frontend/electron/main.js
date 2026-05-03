@@ -9,10 +9,8 @@ function startBackend() {
   let exePath;
 
   if (app.isPackaged) {
-    // 📦 ตอน build แล้ว
     exePath = path.join(process.resourcesPath, "backend", "backend.exe");
   } else {
-    // 🧪 ตอน dev
     exePath = path.join(__dirname, "../../backend/dist/backend.exe");
   }
 
@@ -25,6 +23,10 @@ function startBackend() {
   backend.stdout.on("data", d => console.log("[BE]", d.toString()));
   backend.stderr.on("data", d => console.error("[BE ERR]", d.toString()));
 
+  backend.on("error", err => {
+    console.error("❌ spawn error:", err);
+  });
+
   backend.on("close", code => {
     console.log("❌ backend exit:", code);
   });
@@ -32,12 +34,15 @@ function startBackend() {
 
 // ⏳ WAIT BACKEND READY
 async function waitForBackend() {
-  for (let i = 0; i < 20; i++) {
+
+  const fetchFn = global.fetch || require("node-fetch"); // 🔥 กันพัง
+
+  for (let i = 0; i < 30; i++) {   // เพิ่ม retry
     try {
-      await fetch("http://127.0.0.1:8000");
+      await fetchFn("http://127.0.0.1:8000");
       console.log("✅ Backend ready");
       return;
-    } catch {
+    } catch (e) {
       console.log("⏳ waiting backend...");
       await new Promise(r => setTimeout(r, 500));
     }
@@ -58,11 +63,24 @@ function createWindow() {
 
 // 🔥 MAIN FLOW
 app.whenReady().then(async () => {
-  startBackend();
+  try {
+    startBackend();
 
-  await waitForBackend();   // ⭐ สำคัญมาก
+    await waitForBackend();
 
-  createWindow();
+    createWindow();
+
+  } catch (err) {
+    console.error(err);
+
+    // 🔥 ถ้า backend fail ให้โชว์ error แทนจอดำ
+    const win = new BrowserWindow({
+      width: 600,
+      height: 400
+    });
+
+    win.loadURL("data:text/html,<h1>Backend failed to start</h1>");
+  }
 });
 
 // 🛑 ปิด backend ตอนปิด app
