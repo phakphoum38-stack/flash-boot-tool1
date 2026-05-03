@@ -12,14 +12,11 @@
     "dist": "electron-builder --win --x64"
   },
 
-  "dependencies": {
-    "electron-updater": "^6.1.7"
-  },
-
   "devDependencies": {
     "vite": "^5.0.0",
     "electron": "^28.3.3",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "electron-updater": "^6.1.7"
   },
 
   "build": {
@@ -42,21 +39,23 @@
       }
     ],
 
+    "publish": {
+      "provider": "github",
+      "owner": "phakphoum38-stack",
+      "repo": "flash-boot-tool1"
+    },
+
     "win": {
       "target": "nsis",
       "icon": "electron/icon.ico"
     },
 
     "nsis": {
-      "oneClick": true,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": false
-    },
-
-    "publish": {
-      "provider": "github",
-      "owner": "phakphoum38-stack",
-      "repo": "flash-boot-tool1"
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true
     }
   }
 }
