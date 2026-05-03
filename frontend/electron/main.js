@@ -3,87 +3,65 @@ const { spawn } = require("child_process");
 const path = require("path");
 
 let backend;
+let mainWindow;
 
-// 🚀 START BACKEND
 function startBackend() {
-  let exePath;
+  let exePath = app.isPackaged
+    ? path.join(process.resourcesPath, "backend", "backend.exe")
+    : path.join(__dirname, "../../backend/dist/backend.exe");
 
-  if (app.isPackaged) {
-    exePath = path.join(process.resourcesPath, "backend", "backend.exe");
-  } else {
-    exePath = path.join(__dirname, "../../backend/dist/backend.exe");
-  }
+  backend = spawn(exePath, [], { windowsHide: true });
 
-  console.log("🚀 backend path:", exePath);
-
-  backend = spawn(exePath, [], {
-    windowsHide: true
+  backend.stdout.on("data", d => {
+    const msg = d.toString();
+    console.log("[BE]", msg);
+    mainWindow?.webContents.send("backend-log", msg);
   });
 
-  backend.stdout.on("data", d => console.log("[BE]", d.toString()));
-  backend.stderr.on("data", d => console.error("[BE ERR]", d.toString()));
-
-  backend.on("error", err => {
-    console.error("❌ spawn error:", err);
-  });
-
-  backend.on("close", code => {
-    console.log("❌ backend exit:", code);
+  backend.stderr.on("data", d => {
+    const msg = d.toString();
+    console.error("[BE ERR]", msg);
+    mainWindow?.webContents.send("backend-log", "❌ " + msg);
   });
 }
 
-// ⏳ WAIT BACKEND READY
 async function waitForBackend() {
-
-  const fetchFn = global.fetch || require("node-fetch"); // 🔥 กันพัง
-
-  for (let i = 0; i < 30; i++) {   // เพิ่ม retry
+  for (let i = 0; i < 30; i++) {
     try {
-      await fetchFn("http://127.0.0.1:8000");
-      console.log("✅ Backend ready");
+      await fetch("http://127.0.0.1:8000");
       return;
-    } catch (e) {
-      console.log("⏳ waiting backend...");
+    } catch {
       await new Promise(r => setTimeout(r, 500));
     }
   }
-
-  throw new Error("❌ Backend start failed");
+  throw new Error("Backend failed");
 }
 
-// 🖥 WINDOW
 function createWindow() {
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1000,
-    height: 700
+    height: 700,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js")
+    }
   });
 
-  win.loadFile(path.join(__dirname, "../dist/index.html"));
+  mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
 }
 
-// 🔥 MAIN FLOW
 app.whenReady().then(async () => {
-  try {
-    startBackend();
+  createWindow(); // 👉 เปิดก่อน เพื่อโชว์ loading
 
+  startBackend();
+
+  try {
     await waitForBackend();
 
-    createWindow();
+    mainWindow.webContents.send("backend-ready");
 
-  } catch (err) {
-    console.error(err);
-
-    // 🔥 ถ้า backend fail ให้โชว์ error แทนจอดำ
-    const win = new BrowserWindow({
-      width: 600,
-      height: 400
-    });
-
-    win.loadURL("data:text/html,<h1>Backend failed to start</h1>");
+  } catch {
+    mainWindow.webContents.send("backend-error");
   }
 });
 
-// 🛑 ปิด backend ตอนปิด app
-app.on("will-quit", () => {
-  if (backend) backend.kill();
-});
+app.on("will-quit", () => backend && backend.kill());
