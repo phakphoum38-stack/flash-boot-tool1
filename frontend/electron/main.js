@@ -1,67 +1,126 @@
-const { app, BrowserWindow } = require("electron");
-const { spawn } = require("child_process");
+const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
+const { spawn } = require("child_process");
+const fetch = require("node-fetch");
 
 let backend;
-let mainWindow;
 
+// =========================
+// 🚀 START BACKEND
+// =========================
 function startBackend() {
-  let exePath = app.isPackaged
+
+  const isProd = app.isPackaged;
+
+  const backendPath = isProd
     ? path.join(process.resourcesPath, "backend", "backend.exe")
     : path.join(__dirname, "../../backend/dist/backend.exe");
 
-  backend = spawn(exePath, [], { windowsHide: true });
-
-  backend.stdout.on("data", d => {
-    const msg = d.toString();
-    console.log("[BE]", msg);
-    mainWindow?.webContents.send("backend-log", msg);
+  backend = spawn(backendPath, [], {
+    windowsHide: true,
+    stdio: "pipe"
   });
 
-  backend.stderr.on("data", d => {
-    const msg = d.toString();
-    console.error("[BE ERR]", msg);
-    mainWindow?.webContents.send("backend-log", "❌ " + msg);
-  });
+  backend.stdout.on("data", d => console.log("[BE]", d.toString()));
+  backend.stderr.on("data", d => console.error("[BE ERROR]", d.toString()));
 }
 
+// =========================
+// ⏳ WAIT BACKEND READY
+// =========================
 async function waitForBackend() {
+
   for (let i = 0; i < 30; i++) {
     try {
       await fetch("http://127.0.0.1:8000");
+      console.log("✅ Backend ready");
       return;
     } catch {
       await new Promise(r => setTimeout(r, 500));
     }
   }
-  throw new Error("Backend failed");
+
+  throw new Error("Backend failed to start");
 }
 
+// =========================
+// 🖥 WINDOW
+// =========================
+let win;
+
 function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1000,
-    height: 700,
+
+  win = new BrowserWindow({
+    width: 1100,
+    height: 750,
     webPreferences: {
-      preload: path.join(__dirname, "preload.js")
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true
     }
   });
 
-  mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
+  const indexPath = app.isPackaged
+    ? path.join(__dirname, "../dist/index.html")
+    : path.join(__dirname, "../../frontend/dist/index.html");
+
+  win.loadFile(indexPath);
 }
 
-app.whenReady().then(async () => {
-  createWindow(); // 👉 เปิดก่อน เพื่อโชว์ loading
+// =========================
+// 🔄 AUTO UPDATE (SAFE)
+// =========================
+function setupAutoUpdater() {
 
-  startBackend();
+  let autoUpdater;
 
   try {
-    await waitForBackend();
-
-    mainWindow.webContents.send("backend-ready");
-
+    autoUpdater = require("electron-updater").autoUpdater;
   } catch {
-    mainWindow.webContents.send("backend-error");
+    console.log("auto updater not available");
+    return;
   }
+
+  autoUpdater.autoDownload = true;
+
+  autoUpdater.on("checking-for-update", () => {
+    win.webContents.send("update-status", "checking");
+  });
+
+  autoUpdater.on("update-available", () => {
+    win.webContents.send("update-status", "downloading");
+  });
+
+  autoUpdater.on("download-progress", (p) => {
+    win.webContents.send("update-progress", p);
+  });
+
+  autoUpdater.on("update-downloaded", () => {
+    win.webContents.send("update-status", "ready");
+
+    setTimeout(() => {
+      autoUpdater.quitAndInstall();
+    }, 2000);
+  });
+
+  autoUpdater.on("error", () => {
+    win.webContents.send("update-status", "error");
+  });
+
+  autoUpdater.checkForUpdatesAndNotify();
+}
+
+// =========================
+// 🔥 MAIN
+// =========================
+app.whenReady().then(async () => {
+
+  startBackend();
+  await waitForBackend();
+  createWindow();
+  setupAutoUpdater();
+
 });
 
-app.on("will-quit", () => backend && backend.kill());
+app.on("will-quit", () => {
+  if (backend) backend.kill();
+});
