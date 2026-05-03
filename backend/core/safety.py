@@ -1,13 +1,8 @@
-def validate_device(device):
-
-    blacklist = [
-        "/dev/sda",
-        "/dev/nvme0n1",
-        "/dev/disk0"
-    ]
+def verify_device(device):
+    blacklist = ["/dev/sda", "/dev/nvme0n1", "/dev/root"]
 
     if device in blacklist:
-        raise Exception("🚨 SYSTEM DISK PROTECTED")
+        raise Exception("🚨 SYSTEM DISK BLOCKED")
 
     if not device.startswith("/dev/"):
-        raise Exception("Invalid device")
+        raise Exception("INVALID DEVICE")
