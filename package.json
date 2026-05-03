@@ -27,7 +27,7 @@
     "productName": "Flash Boot Tool",
 
     "directories": {
-      "output": "dist"
+      "output": "release"
     },
 
     "files": [
@@ -35,10 +35,10 @@
       "electron/**/*"
     ],
 
-    ✅ "extraResources": [
+    "extraResources": [
       {
-        "from": "backend/dist/backend.exe",
-        "to": "backend/backend.exe"
+        "from": "backend/dist/",
+        "to": "backend/"
       }
     ],
 
@@ -46,7 +46,7 @@
       {
         "provider": "github",
         "owner": "phakphoum38-stack",
-        "repo": "Flash-Boot-Tool"
+        "repo": "flash-boot-tool1"
       }
     ],
 
@@ -62,10 +62,3 @@
     }
   }
 }
-
-"extraResources": [
-  {
-    "from": "backend/dist/backend.exe",
-    "to": "backend/backend.exe"
-  }
-]
