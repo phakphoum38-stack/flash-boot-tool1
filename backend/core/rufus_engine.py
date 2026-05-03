@@ -1,116 +1,105 @@
 import os
 import hashlib
-import json
 import time
+import json
 
-CHUNK_SIZE = 4 * 1024 * 1024  # 4MB
-STATE_FILE = "flash_state.json"
+BLOCK = 4 * 1024 * 1024  # 4MB
+
+# =========================
+# 🔐 SHA256 HASH
+# =========================
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            b = f.read(BLOCK)
+            if not b:
+                break
+            h.update(b)
+    return h.hexdigest()
 
 
 # =========================
-# 💾 SAVE STATE (RESUME)
+# 💾 SAVE RESUME STATE
 # =========================
-def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+def save_state(device, offset):
+    with open(f"{device}.state", "w") as f:
+        json.dump({"offset": offset}, f)
 
 
-def load_state():
-    if not os.path.exists(STATE_FILE):
-        return None
-
-    with open(STATE_FILE, "r") as f:
-        return json.load(f)
-
-
-# =========================
-# 🔐 HASH VERIFY
-# =========================
-def sha256(data):
-    return hashlib.sha256(data).hexdigest()
+def load_state(device):
+    try:
+        with open(f"{device}.state", "r") as f:
+            return json.load(f).get("offset", 0)
+    except:
+        return 0
 
 
 # =========================
 # 🚀 RUFUS ENGINE
 # =========================
-def flash_image_rufus(iso_path, device):
+def write_image_rufus_style(iso_path, device):
 
     size = os.path.getsize(iso_path)
 
-    state = load_state() or {
-        "written": 0,
-        "chunk_index": 0
-    }
+    print("🔐 Verifying ISO...")
+    iso_hash = sha256_file(iso_path)
 
-    written = state["written"]
+    offset = load_state(device)
 
-    with open(iso_path, "rb") as src, open(device, "wb") as dst:
+    with open(iso_path, "rb") as src, open(device, "rb+") as dst:
 
-        # ⏭ SEEK RESUME
-        src.seek(written)
-        dst.seek(written)
+        src.seek(offset)
+        dst.seek(offset)
 
-        chunk_index = state["chunk_index"]
+        written = offset
 
-        while written < size:
+        while True:
 
-            chunk = src.read(CHUNK_SIZE)
-
-            if not chunk:
+            data = src.read(BLOCK)
+            if not data:
                 break
 
-            # =========================
-            # ✍️ WRITE
-            # =========================
-            dst.write(chunk)
+            dst.write(data)
             dst.flush()
-            os.fsync(dst.fileno())
 
-            # =========================
-            # 🔐 VERIFY
-            # =========================
-            expected_hash = sha256(chunk)
-            actual_hash = sha256(chunk)
+            written += len(data)
 
-            if expected_hash != actual_hash:
-                yield {
-                    "status": "error",
-                    "error": "corruption detected"
-                }
-                return
+            save_state(device, written)
 
-            written += len(chunk)
-
-            # =========================
-            # 💾 SAVE CHECKPOINT
-            # =========================
-            save_state({
-                "written": written,
-                "chunk_index": chunk_index
-            })
-
-            # =========================
-            # 📊 PROGRESS
-            # =========================
             progress = int((written / size) * 100)
 
             yield {
                 "progress": progress,
                 "written": written,
-                "total": size,
-                "chunk": chunk_index,
                 "status": "writing"
             }
 
-            chunk_index += 1
+        dst.flush()
+        os.fsync(dst.fileno())
 
     # =========================
-    # 🧹 CLEAN STATE (DONE)
+    # 🧪 VERIFY PHASE
     # =========================
-    if os.path.exists(STATE_FILE):
-        os.remove(STATE_FILE)
+    print("🧪 Verifying disk...")
+
+    disk_hash = sha256_file(device)
+
+    if disk_hash != iso_hash:
+        yield {
+            "status": "corrupted",
+            "error": "HASH MISMATCH"
+        }
+        return
+
+    # cleanup state
+    try:
+        os.remove(f"{device}.state")
+    except:
+        pass
 
     yield {
         "progress": 100,
-        "status": "done"
+        "status": "done",
+        "verified": True
     }
