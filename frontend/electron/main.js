@@ -1,20 +1,28 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
 const fetch = require("node-fetch");
 
 let backend;
+let win;
 
 // =========================
-// 🚀 START BACKEND
+// 📦 GET BACKEND PATH
+// =========================
+function getBackendPath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "backend", "backend.exe")
+    : path.join(__dirname, "../../backend/dist/backend.exe");
+}
+
+// =========================
+// 🚀 START BACKEND (SAFE)
 // =========================
 function startBackend() {
 
-  const isProd = app.isPackaged;
+  const backendPath = getBackendPath();
 
-  const backendPath = isProd
-    ? path.join(process.resourcesPath, "backend", "backend.exe")
-    : path.join(__dirname, "../../backend/dist/backend.exe");
+  console.log("🚀 Starting backend:", backendPath);
 
   backend = spawn(backendPath, [], {
     windowsHide: true,
@@ -23,14 +31,28 @@ function startBackend() {
 
   backend.stdout.on("data", d => console.log("[BE]", d.toString()));
   backend.stderr.on("data", d => console.error("[BE ERROR]", d.toString()));
+
+  backend.on("exit", (code) => {
+    console.error("💀 Backend exited:", code);
+
+    // 🔁 AUTO RESTART (CRASH RECOVERY)
+    setTimeout(() => {
+      console.log("🔁 Restarting backend...");
+      startBackend();
+    }, 2000);
+  });
+
+  backend.on("error", (err) => {
+    console.error("❌ Backend spawn error:", err);
+  });
 }
 
 // =========================
-// ⏳ WAIT BACKEND READY
+// 🧪 HEALTH CHECK (WATCHDOG)
 // =========================
 async function waitForBackend() {
 
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 40; i++) {
     try {
       await fetch("http://127.0.0.1:8000");
       console.log("✅ Backend ready");
@@ -44,10 +66,28 @@ async function waitForBackend() {
 }
 
 // =========================
+// 🐕 CONTINUOUS WATCHDOG
+// =========================
+function startWatchdog() {
+
+  setInterval(async () => {
+    try {
+      await fetch("http://127.0.0.1:8000");
+    } catch (err) {
+      console.error("⚠️ Backend unreachable - restarting...");
+
+      if (backend) backend.kill();
+
+      setTimeout(() => {
+        startBackend();
+      }, 1000);
+    }
+  }, 5000);
+}
+
+// =========================
 // 🖥 WINDOW
 // =========================
-let win;
-
 function createWindow() {
 
   win = new BrowserWindow({
@@ -67,7 +107,7 @@ function createWindow() {
 }
 
 // =========================
-// 🔄 AUTO UPDATE (SAFE)
+// 🔄 AUTO UPDATE SAFE
 // =========================
 function setupAutoUpdater() {
 
@@ -83,19 +123,19 @@ function setupAutoUpdater() {
   autoUpdater.autoDownload = true;
 
   autoUpdater.on("checking-for-update", () => {
-    win.webContents.send("update-status", "checking");
+    win?.webContents.send("update-status", "checking");
   });
 
   autoUpdater.on("update-available", () => {
-    win.webContents.send("update-status", "downloading");
+    win?.webContents.send("update-status", "downloading");
   });
 
   autoUpdater.on("download-progress", (p) => {
-    win.webContents.send("update-progress", p);
+    win?.webContents.send("update-progress", p);
   });
 
   autoUpdater.on("update-downloaded", () => {
-    win.webContents.send("update-status", "ready");
+    win?.webContents.send("update-status", "ready");
 
     setTimeout(() => {
       autoUpdater.quitAndInstall();
@@ -103,24 +143,30 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("error", () => {
-    win.webContents.send("update-status", "error");
+    win?.webContents.send("update-status", "error");
   });
 
   autoUpdater.checkForUpdatesAndNotify();
 }
 
 // =========================
-// 🔥 MAIN
+// 🔥 APP LIFECYCLE
 // =========================
 app.whenReady().then(async () => {
 
   startBackend();
+
   await waitForBackend();
+
+  startWatchdog();   // 🧠 NEW
   createWindow();
   setupAutoUpdater();
 
 });
 
+// =========================
+// 🧯 CLEAN EXIT
+// =========================
 app.on("will-quit", () => {
   if (backend) backend.kill();
 });
