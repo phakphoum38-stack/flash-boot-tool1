@@ -35,6 +35,13 @@
       "electron/**/*"
     ],
 
+    ✅ "extraResources": [
+      {
+        "from": "backend/dist/backend.exe",
+        "to": "backend/backend.exe"
+      }
+    ],
+
     "publish": [
       {
         "provider": "github",
