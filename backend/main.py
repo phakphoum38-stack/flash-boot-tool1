@@ -1,8 +1,6 @@
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from macos.detect_macos import is_macos
-from macos.create_installer import create_macos_usb
 
 import os
 import time
@@ -12,6 +10,20 @@ import subprocess
 import tempfile
 import shutil
 import traceback
+import platform
+
+# =========================
+# 🧠 SAFE IMPORT (กัน Render พัง)
+# =========================
+try:
+    from macos.detect_macos import is_macos
+    from macos.create_installer import create_macos_usb
+except:
+    def is_macos():
+        return False
+
+    def create_macos_usb(*args, **kwargs):
+        yield {"error": "macOS feature not available"}
 
 app = FastAPI(title="Flash Boot Tool PRO")
 
@@ -32,26 +44,52 @@ def root():
 
 
 # =========================
-# 💽 USB DETECT
+# 🧠 OS DETECT
+# =========================
+def get_os():
+    return platform.system()
+
+
+# =========================
+# 💽 USB DETECT (AUTO OS)
 # =========================
 @app.get("/devices")
 def devices():
     try:
-        output = subprocess.check_output(
-            ["wmic", "diskdrive", "get", "DeviceID,Model,Size,InterfaceType", "/format:json"]
-        )
-        data = json.loads(output)
+        os_type = get_os()
 
-        result = []
-        for d in data:
-            if d.get("InterfaceType") == "USB":
-                result.append({
+        # 🪟 Windows
+        if os_type == "Windows":
+            output = subprocess.check_output(
+                ["wmic", "diskdrive", "get", "DeviceID,Model,Size,InterfaceType", "/format:json"]
+            )
+            data = json.loads(output)
+
+            return [
+                {
                     "path": d["DeviceID"],
                     "model": d["Model"],
                     "size": d["Size"]
-                })
+                }
+                for d in data if d.get("InterfaceType") == "USB"
+            ]
 
-        return result
+        # 🐧 Linux (Render จะเข้าทางนี้)
+        elif os_type == "Linux":
+            output = subprocess.check_output(["lsblk", "-J"])
+            data = json.loads(output)
+
+            result = []
+            for d in data["blockdevices"]:
+                if d["type"] == "disk":
+                    result.append({
+                        "path": f"/dev/{d['name']}",
+                        "model": d.get("model"),
+                        "size": d.get("size")
+                    })
+            return result
+
+        return []
 
     except Exception as e:
         return {"error": str(e)}
@@ -68,206 +106,93 @@ def detect_boot_mode(iso):
 
 
 # =========================
-# 🧽 AUTO PARTITION
+# 🔥 RAW FLASH (ใช้ได้ทุก OS)
 # =========================
-def auto_partition(device, iso):
+def flash_iso(iso_path, device_path):
 
-    disk = device.replace("\\\\.\\PHYSICALDRIVE", "")
-    mode = detect_boot_mode(iso)
-
-    if mode == "UEFI":
-        script = f"""
-select disk {disk}
-clean
-convert gpt
-create partition primary
-format fs=fat32 quick
-assign
-exit
-"""
-    else:
-        script = f"""
-select disk {disk}
-clean
-convert mbr
-create partition primary
-active
-format fs=ntfs quick
-assign
-exit
-"""
-
-    with open("diskpart.txt", "w") as f:
-        f.write(script)
-
-    subprocess.run(["diskpart", "/s", "diskpart.txt"], check=True)
-
-    return {"mode": mode}
-
-
-# =========================
-# 🔍 GET DRIVE LETTER AUTO
-# =========================
-def get_drive_letter(device):
-
-    disk = device.replace("\\\\.\\PHYSICALDRIVE", "")
-
-    cmd = f"""
-$disk = Get-Disk -Number {disk}
-$part = $disk | Get-Partition | Where {{$_.DriveLetter}} | Select -First 1
-$part.DriveLetter
-"""
-
-    out = subprocess.check_output(
-        ["powershell", "-Command", cmd]
-    ).decode().strip()
-
-    return f"{out}:\\"
-
-
-# =========================
-# 📦 EXTRACT ISO
-# =========================
-def extract_iso(iso):
-    temp = tempfile.mkdtemp()
-
-    subprocess.run([
-        "powershell",
-        "-Command",
-        f"Mount-DiskImage -ImagePath '{iso}'"
-    ])
-
-    drive = subprocess.check_output(
-        ["powershell", "-Command", "(Get-DiskImage | Get-Volume).DriveLetter"]
-    ).decode().strip().split()[-1]
-
-    shutil.copytree(f"{drive}:\\", temp, dirs_exist_ok=True)
-
-    subprocess.run([
-        "powershell",
-        "-Command",
-        f"Dismount-DiskImage -ImagePath '{iso}'"
-    ])
-
-    return temp
-
-
-# =========================
-# 🪟 SPLIT WIM
-# =========================
-def split_wim(path):
-
-    wim = os.path.join(path, "sources", "install.wim")
-
-    if not os.path.exists(wim):
-        return
-
-    subprocess.run([
-        "dism",
-        "/Split-Image",
-        f"/ImageFile:{wim}",
-        f"/SWMFile:{wim.replace('.wim','.swm')}",
-        "/FileSize:3800"
-    ])
-
-    os.remove(wim)
-
-
-# =========================
-# 📂 COPY FILES
-# =========================
-def copy_files(src, dst):
-
-    total = sum(
-        os.path.getsize(os.path.join(r, f))
-        for r, _, files in os.walk(src)
-        for f in files
-    )
-
+    total = os.path.getsize(iso_path)
     written = 0
+    start = time.time()
 
-    for root, _, files in os.walk(src):
-        for f in files:
+    with open(iso_path, "rb") as src, open(device_path, "wb") as dst:
+        while True:
+            chunk = src.read(4 * 1024 * 1024)
+            if not chunk:
+                break
 
-            s = os.path.join(root, f)
-            rel = os.path.relpath(s, src)
-            d = os.path.join(dst, rel)
+            dst.write(chunk)
+            written += len(chunk)
 
-            os.makedirs(os.path.dirname(d), exist_ok=True)
+            elapsed = time.time() - start
+            speed = written / elapsed if elapsed > 0 else 0
+            eta = (total - written) / speed if speed > 0 else 0
 
-            with open(s, "rb") as sf, open(d, "wb") as df:
-                while True:
-                    chunk = sf.read(1024 * 1024)
-                    if not chunk:
-                        break
+            yield {
+                "progress": int((written / total) * 100),
+                "speed": round(speed / 1024 / 1024, 2),
+                "eta": int(eta)
+            }
 
-                    df.write(chunk)
-                    written += len(chunk)
-
-                    yield {
-                        "progress": int((written / total) * 100)
-                    }
+    yield {"progress": 100, "status": "done"}
 
 
 # =========================
-# 🚀 WINDOWS FLASH (AUTO)
+# 🚀 SMART FLASH (ISO RAW)
 # =========================
-@app.post("/windows-flash")
-def windows_flash(data: FlashRequest):
+@app.post("/flash")
+def flash(data: FlashRequest):
 
     def gen():
         try:
-            yield json.dumps({"step": "partition"}) + "\n"
-            auto_partition(data.device, data.iso)
-
-            yield json.dumps({"step": "detect_usb"}) + "\n"
-            usb = get_drive_letter(data.device)
-
-            yield json.dumps({"usb": usb}) + "\n"
-
-            yield json.dumps({"step": "extract"}) + "\n"
-            path = extract_iso(data.iso)
-
-            yield json.dumps({"step": "split_wim"}) + "\n"
-            split_wim(path)
-
-            yield json.dumps({"step": "copy"}) + "\n"
-            for p in copy_files(path, usb):
-                yield json.dumps({"type": "progress", "data": p}) + "\n"
-
-            yield json.dumps({"type": "done"}) + "\n"
-
+            for p in flash_iso(data.iso, data.device):
+                yield json.dumps(p) + "\n"
         except Exception as e:
             yield json.dumps({"error": str(e)}) + "\n"
 
     return StreamingResponse(gen(), media_type="application/x-ndjson")
 
+
 # =========================
-# 🍎 MACOS FLASH (REAL)
+# 🍎 MACOS FLASH
 # =========================
 @app.post("/macos-flash")
 def macos_flash(data: dict):
 
     if not is_macos():
-        return {"error": "ต้องใช้ macOS เท่านั้น"}
+        return {"error": "macOS only feature"}
 
     installer = data.get("installer")
     usb = data.get("usb")
 
-    if not installer or not usb:
-        return {"error": "missing installer or usb"}
-
     def gen():
         try:
-            yield json.dumps({"step": "start"}) + "\n"
-
             for line in create_macos_usb(installer, usb):
                 yield json.dumps(line) + "\n"
-
         except Exception as e:
             yield json.dumps({"error": str(e)}) + "\n"
 
     return StreamingResponse(gen(), media_type="application/x-ndjson")
+
+
+# =========================
+# 🔐 VERIFY SHA256
+# =========================
+@app.post("/verify")
+def verify(data: dict):
+    try:
+        def sha256(path):
+            h = hashlib.sha256()
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(4 * 1024 * 1024), b""):
+                    h.update(chunk)
+            return h.hexdigest()
+
+        return {
+            "match": sha256(data["iso"]) == sha256(data["device"])
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # =========================
