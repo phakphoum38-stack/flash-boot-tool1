@@ -1,19 +1,34 @@
 export default function ProgressBar({ data }) {
-  return (
-    <div>
-      <p>Progress: {data.progress || 0}%</p>
-      <p>Speed: {data.speed_mb_s || 0} MB/s</p>
-      <p>ETA: {data.eta_sec || 0}s</p>
 
-      <div style={{ width: "100%", background: "#222", height: 10 }}>
-        <div
-          style={{
-            width: (data.progress || 0) + "%",
-            background: "green",
-            height: "100%"
-          }}
-        />
+  const percent = data.progress || 0;
+  const speed = data.speed || 0;
+  const eta = data.eta || 0;
+
+  return (
+    <div style={{ marginTop: 20 }}>
+
+      {/* BAR */}
+      <div style={{
+        height: 20,
+        background: "#333",
+        borderRadius: 10,
+        overflow: "hidden"
+      }}>
+        <div style={{
+          width: percent + "%",
+          height: "100%",
+          background: "lime",
+          transition: "width 0.3s"
+        }} />
       </div>
+
+      {/* INFO */}
+      <p>{percent}%</p>
+
+      <p>⚡ Speed: {speed} MB/s</p>
+
+      <p>⏳ ETA: {eta}s</p>
+
     </div>
   );
 }
