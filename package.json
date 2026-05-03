@@ -62,3 +62,41 @@
     }
   }
 }
+
+{
+  "build": {
+    "appId": "com.flashboot.tool",
+    "productName": "Flash Boot Tool",
+
+    "directories": {
+      "output": "release"
+    },
+
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+
+    "extraResources": [
+      {
+        "from": "backend/dist/backend.exe",
+        "to": "backend/backend.exe"
+      }
+    ],
+
+    "win": {
+      "target": "nsis"
+    },
+
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false
+    },
+
+    "publish": {
+      "provider": "github",
+      "owner": "phakphoum38-stack",
+      "repo": "flash-boot-tool1"
+    }
+  }
+}
