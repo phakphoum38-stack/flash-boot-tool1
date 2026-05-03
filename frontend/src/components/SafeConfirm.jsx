@@ -1,18 +1,8 @@
-export default function safeConfirm({ device, format, onConfirm }) {
+export default function SafeConfirm({ device, format, onConfirm }) {
 
-  const step1 = window.confirm(
-    `⚠️ WARNING\nYou are about to erase:\n${device}\n\nContinue?`
-  );
+  const ok = confirm(`⚠️ FORMAT ${device} with ${format}?`);
 
-  if (!step1) return;
+  if (ok) onConfirm();
 
-  const step2 = prompt("Type ERASE to confirm:");
-
-  if (step2 !== "ERASE") {
-    alert("Cancelled");
-    return;
-  }
-
-  // 🚀 ส่งกลับไปให้ App.jsx ทำงานต่อ
-  onConfirm();
+  return null;
 }
