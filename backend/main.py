@@ -8,10 +8,10 @@ import hashlib
 import subprocess
 import traceback
 
-app = FastAPI(title="Flash Boot Tool API")
+app = FastAPI(title="Flash Boot Tool PRO")
 
 # =========================
-# 📦 REQUEST MODEL
+# 📦 MODEL
 # =========================
 class FlashRequest(BaseModel):
     iso: str
@@ -27,7 +27,7 @@ def root():
 
 
 # =========================
-# 💽 USB DETECT (Windows)
+# 💽 USB DETECT
 # =========================
 @app.get("/devices")
 def devices():
@@ -56,11 +56,75 @@ def devices():
 
 
 # =========================
-# 🔥 FLASH REAL (PROGRESS + SPEED + ETA)
+# 🔍 DETECT UEFI / BIOS
+# =========================
+def detect_boot_mode(iso_path):
+    try:
+        with open(iso_path, "rb") as f:
+            data = f.read(1024 * 1024)
+
+        if b"EFI" in data:
+            return "UEFI"
+        return "BIOS"
+
+    except:
+        return "UNKNOWN"
+
+
+# =========================
+# 🧽 AUTO PARTITION (GPT/MBR)
+# =========================
+def auto_partition(device, iso):
+
+    disk_num = device.replace("\\\\.\\PHYSICALDRIVE", "")
+    mode = detect_boot_mode(iso)
+
+    if mode == "UEFI":
+        scheme = "GPT"
+        script = f"""
+select disk {disk_num}
+clean
+convert gpt
+create partition primary
+format fs=fat32 quick
+assign
+exit
+"""
+    else:
+        scheme = "MBR"
+        script = f"""
+select disk {disk_num}
+clean
+convert mbr
+create partition primary
+active
+format fs=ntfs quick
+assign
+exit
+"""
+
+    with open("diskpart.txt", "w") as f:
+        f.write(script)
+
+    subprocess.run(["diskpart", "/s", "diskpart.txt"], check=True)
+
+    return {"mode": mode, "scheme": scheme}
+
+
+@app.post("/auto-partition")
+def auto_partition_api(data: dict):
+    try:
+        return auto_partition(data.get("device"), data.get("iso"))
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# =========================
+# 🔥 FLASH (REAL PROGRESS)
 # =========================
 def flash_iso(iso_path, device_path):
-    CHUNK = 4 * 1024 * 1024
 
+    CHUNK = 4 * 1024 * 1024
     total = os.path.getsize(iso_path)
     written = 0
     start = time.time()
@@ -84,8 +148,6 @@ def flash_iso(iso_path, device_path):
 
             yield {
                 "progress": percent,
-                "written_mb": round(written / 1024 / 1024, 2),
-                "total_mb": round(total / 1024 / 1024, 2),
                 "speed": round(speed / 1024 / 1024, 2),
                 "eta": int(eta)
             }
@@ -93,14 +155,22 @@ def flash_iso(iso_path, device_path):
     yield {"progress": 100, "status": "done"}
 
 
-@app.post("/flash")
-def flash(data: FlashRequest):
+# =========================
+# 🚀 SMART FLASH (AUTO EVERYTHING)
+# =========================
+@app.post("/smart-flash")
+def smart_flash(data: FlashRequest):
 
     if not os.path.exists(data.iso):
         return {"error": "ISO not found"}
 
     def gen():
         try:
+            # 1️⃣ partition
+            part = auto_partition(data.device, data.iso)
+            yield json.dumps({"type": "partition", "data": part}) + "\n"
+
+            # 2️⃣ flash
             for update in flash_iso(data.iso, data.device):
                 yield json.dumps({"type": "progress", "data": update}) + "\n"
 
@@ -127,51 +197,14 @@ def sha256_file(path):
 @app.post("/verify")
 def verify(data: dict):
     try:
-        iso = data.get("iso")
-        device = data.get("device")
-
-        iso_hash = sha256_file(iso)
-        dev_hash = sha256_file(device)
+        iso_hash = sha256_file(data.get("iso"))
+        dev_hash = sha256_file(data.get("device"))
 
         return {
-            "iso_hash": iso_hash,
-            "device_hash": dev_hash,
             "match": iso_hash == dev_hash
         }
 
     except Exception as e:
-        return {"error": str(e)}
-
-
-# =========================
-# 🧽 FORMAT USB (diskpart)
-# =========================
-@app.post("/format")
-def format_usb(data: dict):
-    try:
-        device = data.get("device")
-        fs = data.get("fs", "fat32")
-
-        disk_num = device.replace("\\\\.\\PHYSICALDRIVE", "")
-
-        script = f"""
-select disk {disk_num}
-clean
-create partition primary
-format fs={fs} quick
-assign
-exit
-"""
-
-        with open("diskpart.txt", "w") as f:
-            f.write(script)
-
-        subprocess.run(["diskpart", "/s", "diskpart.txt"], check=True)
-
-        return {"status": "formatted"}
-
-    except Exception as e:
-        traceback.print_exc()
         return {"error": str(e)}
 
 
@@ -181,15 +214,10 @@ exit
 @app.post("/boot-check")
 def boot_check(data: dict):
     try:
-        iso = data.get("iso")
+        with open(data.get("iso"), "rb") as f:
+            d = f.read(4096)
 
-        with open(iso, "rb") as f:
-            data = f.read(4096)
-
-        if b"EL TORITO" in data or b"BOOT" in data:
-            return {"bootable": True}
-
-        return {"bootable": False}
+        return {"bootable": b"EFI" in d or b"BOOT" in d}
 
     except Exception as e:
         return {"error": str(e)}
@@ -200,5 +228,4 @@ def boot_check(data: dict):
 # =========================
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="127.0.0.1", port=8000)
