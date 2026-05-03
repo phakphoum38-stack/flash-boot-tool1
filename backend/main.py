@@ -110,30 +110,41 @@ def detect_boot_mode(iso):
 # =========================
 def flash_iso(iso_path, device_path):
 
+    CHUNK = 4 * 1024 * 1024
     total = os.path.getsize(iso_path)
     written = 0
     start = time.time()
 
     with open(iso_path, "rb") as src, open(device_path, "wb") as dst:
+
         while True:
-            chunk = src.read(4 * 1024 * 1024)
+            chunk = src.read(CHUNK)
             if not chunk:
                 break
 
             dst.write(chunk)
+            dst.flush()
+
             written += len(chunk)
 
             elapsed = time.time() - start
             speed = written / elapsed if elapsed > 0 else 0
             eta = (total - written) / speed if speed > 0 else 0
 
+            percent = int((written / total) * 100)
+
             yield {
-                "progress": int((written / total) * 100),
-                "speed": round(speed / 1024 / 1024, 2),
-                "eta": int(eta)
+                "progress": percent,
+                "speed": round(speed / 1024 / 1024, 2),  # MB/s
+                "eta": int(eta),  # seconds
+                "written": written,
+                "total": total
             }
 
-    yield {"progress": 100, "status": "done"}
+    yield {
+        "progress": 100,
+        "status": "done"
+    }
 
 
 # =========================
