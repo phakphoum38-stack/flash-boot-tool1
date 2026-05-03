@@ -13,7 +13,6 @@ export default function App() {
   const [format, setFormat] = useState("fat32");
   const [data, setData] = useState({ progress: 0 });
 
-  // 🔄 UPDATE STATE
   const [updateStatus, setUpdateStatus] = useState("");
   const [updateProgress, setUpdateProgress] = useState(0);
 
@@ -40,33 +39,28 @@ export default function App() {
   }, []);
 
   // =========================
-  // 🔄 AUTO UPDATE LISTENER (ELECTRON)
+  // 🔄 AUTO UPDATE (SAFE)
   // =========================
   useEffect(() => {
 
-    const { ipcRenderer } = window.require("electron");
+    if (!window.api) return; // 🔥 กัน crash
 
-    ipcRenderer.on("update-status", (e, msg) => {
+    window.api.onUpdateStatus?.((msg) => {
       setUpdateStatus(msg);
     });
 
-    ipcRenderer.on("update-progress", (e, data) => {
-      setUpdateProgress(Math.round(data.percent || 0));
+    window.api.onUpdateProgress?.((p) => {
+      setUpdateProgress(Math.round(p || 0));
     });
-
-    return () => {
-      ipcRenderer.removeAllListeners("update-status");
-      ipcRenderer.removeAllListeners("update-progress");
-    };
 
   }, []);
 
   // =========================
-  // 📁 ISO PICKER (ELECTRON)
+  // 📁 ISO PICKER
   // =========================
   const pickISO = async () => {
-    const file = await window.api.selectISO();
-    setIso(file);
+    const file = await window.api?.selectISO?.();
+    if (file) setIso(file);
   };
 
   // =========================
@@ -95,7 +89,7 @@ export default function App() {
 
         try {
           setData(JSON.parse(line));
-        } catch (e) {
+        } catch {
           console.log("parse error", line);
         }
       }
@@ -110,7 +104,7 @@ export default function App() {
 
       <h1>🔥 Flash Boot Tool PRO</h1>
 
-      {/* 🔄 AUTO UPDATE UI */}
+      {/* 🔄 UPDATE UI */}
       {updateStatus && (
         <div style={{
           position: "fixed",
@@ -157,7 +151,7 @@ export default function App() {
         <p>ISO: {iso || "Drop ISO here"}</p>
       </div>
 
-      {/* 💽 USB DEVICE */}
+      {/* 💽 USB */}
       <h3>💽 USB Devices</h3>
 
       <select value={device} onChange={(e) => setDevice(e.target.value)}>
@@ -181,7 +175,7 @@ export default function App() {
 
       <br /><br />
 
-      {/* 🚀 SAFE FLASH BUTTON */}
+      {/* 🚀 SAFE FLASH */}
       <button
         onClick={() =>
           SafeConfirm({
@@ -203,7 +197,5 @@ export default function App() {
       <ProgressBar data={data} />
 
     </div>
-  );
-}
   );
 }
