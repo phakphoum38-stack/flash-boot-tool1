@@ -1,36 +1,51 @@
-import subprocess
-import time
 import os
+import time
 
-def flash_iso(iso, device):
+CHUNK_SIZE = 4 * 1024 * 1024  # 4MB
 
-    size = os.path.getsize(iso)
-    start = time.time()
 
-    cmd = [
-        "powershell",
-        "-Command",
-        f"Get-Content -Path '{iso}' -Encoding Byte -ReadCount 0 | "
-        f"Set-Content -Path '{device}' -Encoding Byte"
-    ]
+def flash_iso(iso_path, device_path):
 
-    proc = subprocess.Popen(cmd)
-
+    total_size = os.path.getsize(iso_path)
     written = 0
 
-    while proc.poll() is None:
-        time.sleep(1)
+    start_time = time.time()
 
-        written += 50 * 1024 * 1024  # fake estimate (ปรับได้)
+    try:
+        with open(iso_path, "rb") as src, open(device_path, "wb") as dst:
 
-        percent = min(100, int((written / size) * 100))
-        speed = written / (time.time() - start + 1)
-        eta = (size - written) / (speed + 1)
+            while True:
+                chunk = src.read(CHUNK_SIZE)
 
+                if not chunk:
+                    break
+
+                dst.write(chunk)
+                dst.flush()
+
+                written += len(chunk)
+
+                # ⏱ คำนวณจริง
+                elapsed = time.time() - start_time
+                speed = written / elapsed if elapsed > 0 else 0
+                eta = (total_size - written) / speed if speed > 0 else 0
+                percent = int((written / total_size) * 100)
+
+                yield {
+                    "progress": percent,
+                    "written_mb": round(written / 1024 / 1024, 2),
+                    "total_mb": round(total_size / 1024 / 1024, 2),
+                    "speed": round(speed / 1024 / 1024, 2),  # MB/s
+                    "eta": int(eta)
+                }
+
+        # ✅ เสร็จ
         yield {
-            "progress": percent,
-            "speed": round(speed / 1024 / 1024, 2),
-            "eta": int(eta)
+            "progress": 100,
+            "status": "done"
         }
 
-    yield {"progress": 100}
+    except Exception as e:
+        yield {
+            "error": str(e)
+        }
