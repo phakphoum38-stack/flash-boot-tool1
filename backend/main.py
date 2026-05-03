@@ -56,44 +56,33 @@ def get_os():
 @app.get("/devices")
 def devices():
     try:
-        os_type = get_os()
+        output = subprocess.check_output(
+            ["wmic", "diskdrive", "get", "DeviceID,Model,Size,InterfaceType", "/format:json"]
+        )
+        data = json.loads(output)
 
-        # 🪟 Windows
-        if os_type == "Windows":
-            output = subprocess.check_output(
-                ["wmic", "diskdrive", "get", "DeviceID,Model,Size,InterfaceType", "/format:json"]
-            )
-            data = json.loads(output)
+        result = []
 
-            return [
-                {
-                    "path": d["DeviceID"],
-                    "model": d["Model"],
-                    "size": d["Size"]
-                }
-                for d in data if d.get("InterfaceType") == "USB"
-            ]
+        for d in data:
+            if d.get("InterfaceType") != "USB":
+                continue
 
-        # 🐧 Linux (Render จะเข้าทางนี้)
-        elif os_type == "Linux":
-            output = subprocess.check_output(["lsblk", "-J"])
-            data = json.loads(output)
+            size_gb = int(d["Size"]) / (1024**3)
 
-            result = []
-            for d in data["blockdevices"]:
-                if d["type"] == "disk":
-                    result.append({
-                        "path": f"/dev/{d['name']}",
-                        "model": d.get("model"),
-                        "size": d.get("size")
-                    })
-            return result
+            # 🔥 กัน HDD (ใหญ่เกิน = ไม่โชว์)
+            if size_gb > 512:
+                continue
 
-        return []
+            result.append({
+                "path": d["DeviceID"],
+                "model": d["Model"],
+                "size": f"{round(size_gb,1)} GB"
+            })
+
+        return result
 
     except Exception as e:
         return {"error": str(e)}
-
 
 # =========================
 # 🔍 DETECT BOOT MODE
