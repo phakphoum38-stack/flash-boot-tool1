@@ -1,59 +1,39 @@
-const { app, BrowserWindow } = require("electron");
-const path = require("path");
-const { spawn } = require("child_process");
 
-let win;
-let backendProcess;
-
-// 🚀 start backend
 function startBackend() {
-  const backendPath = path.join(__dirname, "../../backend/main.py");
+  const exePath = path.join(__dirname, "../../backend/dist/main.exe");
 
-  console.log("Starting backend:", backendPath);
+  backend = spawn(exePath);
 
-  backendProcess = spawn("python", [backendPath], {
-    shell: true
-  });
-
-  backendProcess.stdout.on("data", (data) => {
-    console.log("[BACKEND]", data.toString());
-  });
-
-  backendProcess.stderr.on("data", (data) => {
-    console.error("[BACKEND ERROR]", data.toString());
-  });
+  backend.stdout.on("data", d => console.log(d.toString()));
+  backend.stderr.on("data", d => console.error(d.toString()));
 }
 
-// 🪟 window
-function createWindow() {
-  win = new BrowserWindow({
-    width: 1000,
-    height: 700,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+async function waitForBackend() {
+  const fetch = require("node-fetch");
+
+  for (let i = 0; i < 20; i++) {
+    try {
+      await fetch("http://127.0.0.1:8000");
+      return;
+    } catch {
+      await new Promise(r => setTimeout(r, 500));
     }
-  });
-
-  const indexPath = path.join(__dirname, "../dist/index.html");
-
-  win.loadFile(indexPath);
-
-  win.webContents.openDevTools();
+  }
 }
 
-app.whenReady().then(() => {
+function createWindow() {
+  const win = new BrowserWindow({
+    width: 1000,
+    height: 700
+  });
+
+  win.loadFile(path.join(__dirname, "../dist/index.html"));
+}
+
+app.whenReady().then(async () => {
   startBackend();
-
-  // ⏳ รอ backend ขึ้นก่อน
-  setTimeout(() => {
-    createWindow();
-  }, 3000);
+  await waitForBackend();
+  createWindow();
 });
 
-// 🧹 kill backend ตอนปิด
-app.on("will-quit", () => {
-  if (backendProcess) {
-    backendProcess.kill();
-  }
-});
+app.on("will-quit", () => backend && backend.kill());
