@@ -8,7 +8,7 @@ export default function ProgressBar({ data }) {
     <div style={{ marginTop: 20 }}>
 
       <div style={{
-        height: 20,
+        height: 18,
         background: "#333",
         borderRadius: 10,
         overflow: "hidden"
@@ -17,12 +17,12 @@ export default function ProgressBar({ data }) {
           width: percent + "%",
           height: "100%",
           background: "lime",
-          transition: "width 0.4s ease"
+          transition: "width 0.3s"
         }} />
       </div>
 
       <p>{percent}%</p>
-      <p>⚡ Speed: {speed} MB/s</p>
+      <p>⚡ {speed} MB/s</p>
       <p>⏳ ETA: {eta}s</p>
 
     </div>
