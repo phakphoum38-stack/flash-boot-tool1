@@ -18,7 +18,7 @@ export default function ProgressBar({ data }) {
           width: percent + "%",
           height: "100%",
           background: "lime",
-          transition: "width 0.3s"
+          transition: "width 0.4s ease"
         }} />
       </div>
 
