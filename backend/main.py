@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from macos.detect_macos import is_macos
+from macos.create_installer import create_macos_usb
 
 import os
 import time
@@ -234,6 +236,33 @@ def windows_flash(data: FlashRequest):
                 yield json.dumps({"type": "progress", "data": p}) + "\n"
 
             yield json.dumps({"type": "done"}) + "\n"
+
+        except Exception as e:
+            yield json.dumps({"error": str(e)}) + "\n"
+
+    return StreamingResponse(gen(), media_type="application/x-ndjson")
+
+# =========================
+# 🍎 MACOS FLASH (REAL)
+# =========================
+@app.post("/macos-flash")
+def macos_flash(data: dict):
+
+    if not is_macos():
+        return {"error": "ต้องใช้ macOS เท่านั้น"}
+
+    installer = data.get("installer")
+    usb = data.get("usb")
+
+    if not installer or not usb:
+        return {"error": "missing installer or usb"}
+
+    def gen():
+        try:
+            yield json.dumps({"step": "start"}) + "\n"
+
+            for line in create_macos_usb(installer, usb):
+                yield json.dumps(line) + "\n"
 
         except Exception as e:
             yield json.dumps({"error": str(e)}) + "\n"
