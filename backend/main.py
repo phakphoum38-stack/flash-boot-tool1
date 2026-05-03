@@ -1,11 +1,14 @@
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-import json
+
 import os
 import time
+import json
 import hashlib
 import subprocess
+import tempfile
+import shutil
 import traceback
 
 app = FastAPI(title="Flash Boot Tool PRO")
@@ -35,9 +38,7 @@ def devices():
         output = subprocess.check_output(
             ["wmic", "diskdrive", "get", "DeviceID,Model,Size,InterfaceType", "/format:json"]
         )
-
-        import json as j
-        data = j.loads(output)
+        data = json.loads(output)
 
         result = []
         for d in data:
@@ -51,38 +52,30 @@ def devices():
         return result
 
     except Exception as e:
-        traceback.print_exc()
         return {"error": str(e)}
 
 
 # =========================
-# 🔍 DETECT UEFI / BIOS
+# 🔍 DETECT BOOT MODE
 # =========================
-def detect_boot_mode(iso_path):
-    try:
-        with open(iso_path, "rb") as f:
-            data = f.read(1024 * 1024)
+def detect_boot_mode(iso):
+    with open(iso, "rb") as f:
+        data = f.read(1024 * 1024)
 
-        if b"EFI" in data:
-            return "UEFI"
-        return "BIOS"
-
-    except:
-        return "UNKNOWN"
+    return "UEFI" if b"EFI" in data else "BIOS"
 
 
 # =========================
-# 🧽 AUTO PARTITION (GPT/MBR)
+# 🧽 AUTO PARTITION
 # =========================
 def auto_partition(device, iso):
 
-    disk_num = device.replace("\\\\.\\PHYSICALDRIVE", "")
+    disk = device.replace("\\\\.\\PHYSICALDRIVE", "")
     mode = detect_boot_mode(iso)
 
     if mode == "UEFI":
-        scheme = "GPT"
         script = f"""
-select disk {disk_num}
+select disk {disk}
 clean
 convert gpt
 create partition primary
@@ -91,9 +84,8 @@ assign
 exit
 """
     else:
-        scheme = "MBR"
         script = f"""
-select disk {disk_num}
+select disk {disk}
 clean
 convert mbr
 create partition primary
@@ -108,119 +100,145 @@ exit
 
     subprocess.run(["diskpart", "/s", "diskpart.txt"], check=True)
 
-    return {"mode": mode, "scheme": scheme}
-
-
-@app.post("/auto-partition")
-def auto_partition_api(data: dict):
-    try:
-        return auto_partition(data.get("device"), data.get("iso"))
-    except Exception as e:
-        return {"error": str(e)}
+    return {"mode": mode}
 
 
 # =========================
-# 🔥 FLASH (REAL PROGRESS)
+# 🔍 GET DRIVE LETTER AUTO
 # =========================
-def flash_iso(iso_path, device_path):
+def get_drive_letter(device):
 
-    CHUNK = 4 * 1024 * 1024
-    total = os.path.getsize(iso_path)
+    disk = device.replace("\\\\.\\PHYSICALDRIVE", "")
+
+    cmd = f"""
+$disk = Get-Disk -Number {disk}
+$part = $disk | Get-Partition | Where {{$_.DriveLetter}} | Select -First 1
+$part.DriveLetter
+"""
+
+    out = subprocess.check_output(
+        ["powershell", "-Command", cmd]
+    ).decode().strip()
+
+    return f"{out}:\\"
+
+
+# =========================
+# 📦 EXTRACT ISO
+# =========================
+def extract_iso(iso):
+    temp = tempfile.mkdtemp()
+
+    subprocess.run([
+        "powershell",
+        "-Command",
+        f"Mount-DiskImage -ImagePath '{iso}'"
+    ])
+
+    drive = subprocess.check_output(
+        ["powershell", "-Command", "(Get-DiskImage | Get-Volume).DriveLetter"]
+    ).decode().strip().split()[-1]
+
+    shutil.copytree(f"{drive}:\\", temp, dirs_exist_ok=True)
+
+    subprocess.run([
+        "powershell",
+        "-Command",
+        f"Dismount-DiskImage -ImagePath '{iso}'"
+    ])
+
+    return temp
+
+
+# =========================
+# 🪟 SPLIT WIM
+# =========================
+def split_wim(path):
+
+    wim = os.path.join(path, "sources", "install.wim")
+
+    if not os.path.exists(wim):
+        return
+
+    subprocess.run([
+        "dism",
+        "/Split-Image",
+        f"/ImageFile:{wim}",
+        f"/SWMFile:{wim.replace('.wim','.swm')}",
+        "/FileSize:3800"
+    ])
+
+    os.remove(wim)
+
+
+# =========================
+# 📂 COPY FILES
+# =========================
+def copy_files(src, dst):
+
+    total = sum(
+        os.path.getsize(os.path.join(r, f))
+        for r, _, files in os.walk(src)
+        for f in files
+    )
+
     written = 0
-    start = time.time()
 
-    with open(iso_path, "rb") as src, open(device_path, "wb") as dst:
+    for root, _, files in os.walk(src):
+        for f in files:
 
-        while True:
-            chunk = src.read(CHUNK)
-            if not chunk:
-                break
+            s = os.path.join(root, f)
+            rel = os.path.relpath(s, src)
+            d = os.path.join(dst, rel)
 
-            dst.write(chunk)
-            dst.flush()
+            os.makedirs(os.path.dirname(d), exist_ok=True)
 
-            written += len(chunk)
+            with open(s, "rb") as sf, open(d, "wb") as df:
+                while True:
+                    chunk = sf.read(1024 * 1024)
+                    if not chunk:
+                        break
 
-            elapsed = time.time() - start
-            speed = written / elapsed if elapsed > 0 else 0
-            eta = (total - written) / speed if speed > 0 else 0
-            percent = int((written / total) * 100)
+                    df.write(chunk)
+                    written += len(chunk)
 
-            yield {
-                "progress": percent,
-                "speed": round(speed / 1024 / 1024, 2),
-                "eta": int(eta)
-            }
-
-    yield {"progress": 100, "status": "done"}
+                    yield {
+                        "progress": int((written / total) * 100)
+                    }
 
 
 # =========================
-# 🚀 SMART FLASH (AUTO EVERYTHING)
+# 🚀 WINDOWS FLASH (AUTO)
 # =========================
-@app.post("/smart-flash")
-def smart_flash(data: FlashRequest):
-
-    if not os.path.exists(data.iso):
-        return {"error": "ISO not found"}
+@app.post("/windows-flash")
+def windows_flash(data: FlashRequest):
 
     def gen():
         try:
-            # 1️⃣ partition
-            part = auto_partition(data.device, data.iso)
-            yield json.dumps({"type": "partition", "data": part}) + "\n"
+            yield json.dumps({"step": "partition"}) + "\n"
+            auto_partition(data.device, data.iso)
 
-            # 2️⃣ flash
-            for update in flash_iso(data.iso, data.device):
-                yield json.dumps({"type": "progress", "data": update}) + "\n"
+            yield json.dumps({"step": "detect_usb"}) + "\n"
+            usb = get_drive_letter(data.device)
+
+            yield json.dumps({"usb": usb}) + "\n"
+
+            yield json.dumps({"step": "extract"}) + "\n"
+            path = extract_iso(data.iso)
+
+            yield json.dumps({"step": "split_wim"}) + "\n"
+            split_wim(path)
+
+            yield json.dumps({"step": "copy"}) + "\n"
+            for p in copy_files(path, usb):
+                yield json.dumps({"type": "progress", "data": p}) + "\n"
 
             yield json.dumps({"type": "done"}) + "\n"
 
         except Exception as e:
-            traceback.print_exc()
-            yield json.dumps({"type": "error", "message": str(e)}) + "\n"
+            yield json.dumps({"error": str(e)}) + "\n"
 
     return StreamingResponse(gen(), media_type="application/x-ndjson")
-
-
-# =========================
-# 🔐 VERIFY SHA256
-# =========================
-def sha256_file(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(4 * 1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-@app.post("/verify")
-def verify(data: dict):
-    try:
-        iso_hash = sha256_file(data.get("iso"))
-        dev_hash = sha256_file(data.get("device"))
-
-        return {
-            "match": iso_hash == dev_hash
-        }
-
-    except Exception as e:
-        return {"error": str(e)}
-
-
-# =========================
-# 💿 BOOT CHECK
-# =========================
-@app.post("/boot-check")
-def boot_check(data: dict):
-    try:
-        with open(data.get("iso"), "rb") as f:
-            d = f.read(4096)
-
-        return {"bootable": b"EFI" in d or b"BOOT" in d}
-
-    except Exception as e:
-        return {"error": str(e)}
 
 
 # =========================
