@@ -1,4 +1,16 @@
+import os
+
+BLACKLIST = [
+    "/dev/sda",
+    "/dev/nvme0n1",
+    "/dev/root",
+    "/dev/disk0"
+]
+
 def validate_iso(path):
+    if not path:
+        raise Exception("Empty path")
+
     if not path.endswith((".iso", ".dmg")):
         raise Exception("Invalid image file")
 
@@ -7,24 +19,13 @@ def validate_iso(path):
 
 
 def validate_device(device):
+
     if not device.startswith("/dev/"):
         raise Exception("Invalid device")
 
-    # 🧨 กันลบ disk หลัก
-    blacklist = ["/dev/sda", "/dev/nvme0n1"]
-    if device in blacklist:
-        raise Exception("Blocked system disk")
-
-def validate_device(device):
-
-    blacklist = [
-        "/dev/sda",
-        "/dev/nvme0n1",
-        "/dev/root"
-    ]
-
-    if device in blacklist:
+    if device in BLACKLIST:
         raise Exception("🚨 SYSTEM DISK BLOCKED")
 
-    if not device.startswith("/dev/"):
-        raise Exception("Invalid device")
+    # กัน partition หลัก (Etcher style safety)
+    if "disk0" in device or "sda" in device:
+        raise Exception("Protected system disk")
