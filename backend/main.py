@@ -1,28 +1,42 @@
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 import json
 import traceback
 
-# 🔒 import safe
+# 🔒 safe import (กัน exe พัง)
 try:
     from usb import list_usb
     from flasher import flash_iso
 except Exception as e:
     print("IMPORT ERROR:", e)
     list_usb = lambda: []
+
     def flash_iso(a, b):
         yield {"error": "flash engine not loaded"}
 
-app = FastAPI()
+app = FastAPI(title="Flash Boot Tool API")
 
 
-# ❤️ health check (สำคัญมากสำหรับ Electron)
+# =========================
+# 📦 REQUEST MODEL
+# =========================
+class FlashRequest(BaseModel):
+    iso: str
+    device: str
+
+
+# =========================
+# ❤️ HEALTH CHECK
+# =========================
 @app.get("/")
 def root():
     return {"status": "ok"}
 
 
-# 💽 list USB
+# =========================
+# 💽 LIST USB DEVICES
+# =========================
 @app.get("/devices")
 def devices():
     try:
@@ -32,12 +46,14 @@ def devices():
         return {"error": str(e)}
 
 
-# 🔥 flash ISO → USB
+# =========================
+# 🔥 FLASH (STREAM REALTIME)
+# =========================
 @app.post("/flash")
-def flash(data: dict):
+def flash(data: FlashRequest):
 
-    iso = data.get("iso")
-    device = data.get("device")
+    iso = data.iso
+    device = data.device
 
     # 🛡 validation
     if not iso or not device:
@@ -46,15 +62,31 @@ def flash(data: dict):
     def gen():
         try:
             for update in flash_iso(iso, device):
-                yield json.dumps(update) + "\n"
+                yield json.dumps({
+                    "type": "progress",
+                    "data": update
+                }) + "\n"
+
+            yield json.dumps({
+                "type": "done"
+            }) + "\n"
+
         except Exception as e:
             traceback.print_exc()
-            yield json.dumps({"error": str(e)}) + "\n"
+            yield json.dumps({
+                "type": "error",
+                "message": str(e)
+            }) + "\n"
 
-    return StreamingResponse(gen(), media_type="application/x-ndjson")
+    return StreamingResponse(
+        gen(),
+        media_type="application/x-ndjson"
+    )
 
 
-# 🚀 run server
+# =========================
+# 🚀 RUN SERVER
+# =========================
 if __name__ == "__main__":
     import uvicorn
 
